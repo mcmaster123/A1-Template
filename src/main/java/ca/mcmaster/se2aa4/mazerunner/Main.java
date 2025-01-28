@@ -7,16 +7,41 @@ import org.apache.commons.cli.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
 
-    private static final Logger logger = LogManager.getLogger(Main.class);
-    private static final char WALL = '#';
-    private static final char OPEN = ' ';
-
     public static void main(String[] args) {
-        // Set up command-line options
+        // Command-line option setup
+        CommandLine cmd = parseCommandLineArgs(args);
+        if (cmd == null) return;
+
+        String mazeFile = cmd.getOptionValue("i");
+
+        // Load maze and initialize the solver
+        MazeSolver solver = new MazeSolver(mazeFile);
+        if (!solver.loadMaze()) {
+            System.err.println("Failed to load maze from file: " + mazeFile);
+            return;
+        }
+
+        // Display maze
+        solver.displayMaze();
+
+        // Solve the maze
+        String factorizedPath = solver.solveMazeWithRightHandRule();
+        if (factorizedPath == null) {
+            System.err.println("Failed to solve maze: Entry or exit not found.");
+        } else {
+            System.out.println("Factorized Path: " + factorizedPath);
+        }
+    }
+
+    /**
+     * Parses the command-line arguments using Apache Commons CLI.
+     */
+    private static CommandLine parseCommandLineArgs(String[] args) {
         Options options = new Options();
         Option inputOption = Option.builder("i")
             .longOpt("input")
@@ -26,65 +51,60 @@ public class Main {
             .build();
         options.addOption(inputOption);
 
-        CommandLine cmd;
         try {
-            cmd = new DefaultParser().parse(options, args);
+            return new DefaultParser().parse(options, args);
         } catch (ParseException e) {
-            logger.error("Invalid command-line arguments: {}", e.getMessage());
+            System.err.println("Invalid command-line arguments: " + e.getMessage());
             new HelpFormatter().printHelp("MazeRunner", options);
-            return;
+            return null;
         }
+    }
+}
 
-        String mazeFile = cmd.getOptionValue("i");
+/**
+ * Encapsulates all logic for loading, displaying, and solving a maze.
+ */
+class MazeSolver {
 
-        logger.info("Starting Maze Runner");
-        logger.info("Reading maze file: {}", mazeFile);
+    private static final Logger logger = LogManager.getLogger(MazeSolver.class);
+    private static final char WALL = '#';
+    private static final char OPEN = ' ';
 
-        char[][] maze = readMaze(mazeFile);
-        if (maze == null) {
-            logger.error("Failed to load maze.");
-            return;
-        }
+    private final String filePath;
+    private char[][] maze;
+    private int entryRow, entryCol, exitRow, exitCol;
 
-        displayMaze(maze);
-
-        int[] entryExit = locateEntryExit(maze);
-        if (entryExit == null) {
-            logger.error("Entry/exit not found in the maze.");
-            return;
-        }
-
-        logger.info("Entry at: Row {} Column {}", entryExit[0], entryExit[1]);
-        logger.info("Exit at: Row {} Column {}", entryExit[2], entryExit[3]);
-
-        String path = findPath(maze, entryExit[0], entryExit[1], entryExit[2], entryExit[3]);
-
-        logger.info("Factorized Path: {}", factorizePath(path));
-
-        logger.info("Maze Runner completed.");
+    public MazeSolver(String filePath) {
+        this.filePath = filePath;
     }
 
     /**
-     * Reads the maze from a file and returns it as a 2D character array.
+     * Loads the maze from the file into a 2D character array.
      */
-    private static char[][] readMaze(String filename) {
+    public boolean loadMaze() {
         List<char[]> lines = new ArrayList<>();
-        try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 lines.add(line.toCharArray());
             }
         } catch (IOException e) {
-            logger.error("Error reading file: {}", e.getMessage());
-            return null;
+            logger.error("Error reading maze file: {}", e.getMessage());
+            return false;
         }
-        return lines.toArray(new char[0][]);
+
+        maze = lines.toArray(new char[0][]);
+        if (!findEntryAndExit()) {
+            logger.error("Maze does not contain a valid entry or exit.");
+            return false;
+        }
+        return true;
     }
 
     /**
-     * Displays the maze layout for debugging.
+     * Displays the maze layout.
      */
-    private static void displayMaze(char[][] maze) {
+    public void displayMaze() {
         logger.info("Maze Layout:");
         for (char[] row : maze) {
             logger.info(new String(row));
@@ -92,56 +112,34 @@ public class Main {
     }
 
     /**
-     * Identifies the entry and exit points in the maze.
-     * The entry is the first open space (' ') in the leftmost column.
-     * The exit is the first open space (' ') in the rightmost column.
+     * Solves the maze using the Right-Hand Rule and returns the factorized path.
      */
-    private static int[] locateEntryExit(char[][] maze) {
-        int rows = maze.length;
-        int cols = maze[0].length;
-        int entryRow = -1, exitRow = -1;
+    public String solveMazeWithRightHandRule() {
+        if (maze == null) return null;
 
-        for (int i = 0; i < rows; i++) {
-            if (maze[i][0] == OPEN) entryRow = i;
-            if (maze[i][cols - 1] == OPEN) exitRow = i;
-            if (entryRow != -1 && exitRow != -1) break;
-        }
-
-        return (entryRow != -1 && exitRow != -1) ? new int[]{entryRow, 0, exitRow, cols - 1} : null;
-    }
-
-    /**
-     * Implements the Right-Hand Rule to find a path through the maze.
-     */
-    private static String findPath(char[][] maze, int startRow, int startCol, int exitRow, int exitCol) {
         int[][] directions = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}}; // Right, Down, Left, Up
         int dir = 0; // Start facing right
-        int row = startRow, col = startCol;
+        int row = entryRow, col = entryCol;
 
         StringBuilder path = new StringBuilder();
-        Set<String> visited = new HashSet<>();
-
-        int stepLimit = maze.length * maze[0].length * 2; // Prevents infinite looping (Failsafe)
-        int stepCount = 0;
+        boolean[][][] visited = new boolean[maze.length][maze[0].length][4];
+        int stepLimit = maze.length * maze[0].length * 2;
+        int steps = 0;
 
         while (row != exitRow || col != exitCol) {
-            if (stepCount++ > stepLimit) {
-                logger.error("ERROR: Infinite loop detected! Terminating pathfinding.");
-                return "ERROR: Infinite loop detected";
+            if (steps++ > stepLimit) {
+                logger.error("Infinite loop detected during maze solving.");
+                return null;
             }
 
-            String pos = row + "," + col + "," + dir;
-            if (visited.contains(pos)) {
-                logger.warn("Loop detected at ({}, {}) facing direction {}", row, col, dir);
-            }
-            visited.add(pos);
+            visited[row][col][dir] = true;
 
             // Try turning right first
             int rightDir = (dir + 1) % 4;
             int rRow = row + directions[rightDir][0];
             int rCol = col + directions[rightDir][1];
 
-            if (isOpen(maze, rRow, rCol)) {
+            if (isOpen(rRow, rCol) && !visited[rRow][rCol][rightDir]) {
                 dir = rightDir;
                 row = rRow;
                 col = rCol;
@@ -149,37 +147,29 @@ public class Main {
                 continue;
             }
 
-            // If right is blocked, try moving forward
+            // Try moving forward
             int fRow = row + directions[dir][0];
             int fCol = col + directions[dir][1];
 
-            if (isOpen(maze, fRow, fCol)) {
+            if (isOpen(fRow, fCol) && !visited[fRow][fCol][dir]) {
                 row = fRow;
                 col = fCol;
                 path.append("F ");
                 continue;
             }
 
-            // If forward is blocked, turn left
+            // Turn left if forward is blocked
             dir = (dir + 3) % 4;
             path.append("L ");
         }
 
-        return path.toString().trim();
-    }
-
-    /**
-     * Checks if a cell in the maze is open and within bounds.
-     */
-    private static boolean isOpen(char[][] maze, int row, int col) {
-        return row >= 0 && row < maze.length && col >= 0 && col < maze[0].length && maze[row][col] == OPEN;
+        return factorizePath(path.toString().trim());
     }
 
     /**
      * Factorizes the path by compressing repeated moves.
-     * Example: "F F F L L R R" → "3F 2L 2R"
      */
-    private static String factorizePath(String path) {
+    private String factorizePath(String path) {
         if (path.isEmpty()) return path;
 
         String[] moves = path.split(" ");
@@ -199,5 +189,28 @@ public class Main {
 
         factorized.append(count > 1 ? count + prevMove : prevMove);
         return factorized.toString();
+    }
+
+    /**
+     * Identifies the entry (leftmost open space) and exit (rightmost open space).
+     */
+    private boolean findEntryAndExit() {
+        entryRow = exitRow = -1;
+        entryCol = 0;
+        exitCol = maze[0].length - 1;
+
+        for (int i = 0; i < maze.length; i++) {
+            if (maze[i][0] == OPEN && entryRow == -1) entryRow = i;
+            if (maze[i][exitCol] == OPEN && exitRow == -1) exitRow = i;
+        }
+
+        return entryRow != -1 && exitRow != -1;
+    }
+
+    /**
+     * Checks if a cell is open and within bounds.
+     */
+    private boolean isOpen(int row, int col) {
+        return row >= 0 && row < maze.length && col >= 0 && col < maze[0].length && maze[row][col] == OPEN;
     }
 }
