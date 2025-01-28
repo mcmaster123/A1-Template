@@ -16,8 +16,15 @@ public class Main {
     private static final char OPEN = ' ';
 
     public static void main(String[] args) {
+        // Set up command-line options
         Options options = new Options();
-        options.addOption(new Option("i", "input", true, "Maze file path", true));
+        Option inputOption = Option.builder("i")
+            .longOpt("input")
+            .hasArg()
+            .desc("Maze file path")
+            .required(true)
+            .build();
+        options.addOption(inputOption);
 
         CommandLine cmd;
         try {
@@ -57,6 +64,9 @@ public class Main {
         logger.info("Maze Runner completed.");
     }
 
+    /**
+     * Reads the maze from a file and returns it as a 2D character array.
+     */
     private static char[][] readMaze(String filename) {
         List<char[]> lines = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(filename))) {
@@ -71,6 +81,9 @@ public class Main {
         return lines.toArray(new char[0][]);
     }
 
+    /**
+     * Displays the maze layout for debugging.
+     */
     private static void displayMaze(char[][] maze) {
         logger.info("Maze Layout:");
         for (char[] row : maze) {
@@ -78,6 +91,11 @@ public class Main {
         }
     }
 
+    /**
+     * Identifies the entry and exit points in the maze.
+     * The entry is the first open space (' ') in the leftmost column.
+     * The exit is the first open space (' ') in the rightmost column.
+     */
     private static int[] locateEntryExit(char[][] maze) {
         int rows = maze.length;
         int cols = maze[0].length;
@@ -93,9 +111,7 @@ public class Main {
     }
 
     /**
-     * Implements the Right-Hand Rule for pathfinding.
-     * Bug #1 (Infinite Loop): Under certain conditions, the solver keeps cycling in the same path.
-     * Bug #2 (Performance): Unnecessary checks slow it down in larger mazes.
+     * Implements the Right-Hand Rule to find a path through the maze.
      */
     private static String findPath(char[][] maze, int startRow, int startCol, int exitRow, int exitCol) {
         int[][] directions = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}}; // Right, Down, Left, Up
@@ -103,14 +119,22 @@ public class Main {
         int row = startRow, col = startCol;
 
         StringBuilder path = new StringBuilder();
-        Set<String> visited = new HashSet<>(); // Track visited positions (Bug is hidden here)
+        Set<String> visited = new HashSet<>();
+
+        int stepLimit = maze.length * maze[0].length * 2; // Prevents infinite looping (Failsafe)
+        int stepCount = 0;
 
         while (row != exitRow || col != exitCol) {
-            String pos = row + "," + col;
-            if (visited.contains(pos)) {
-                logger.warn("Potential infinite loop detected! (Row {}, Col {})", row, col);
+            if (stepCount++ > stepLimit) {
+                logger.error("ERROR: Infinite loop detected! Terminating pathfinding.");
+                return "ERROR: Infinite loop detected";
             }
-            visited.add(pos);  // Bug: This set does not prevent actual cycles effectively.
+
+            String pos = row + "," + col + "," + dir;
+            if (visited.contains(pos)) {
+                logger.warn("Loop detected at ({}, {}) facing direction {}", row, col, dir);
+            }
+            visited.add(pos);
 
             // Try turning right first
             int rightDir = (dir + 1) % 4;
@@ -144,12 +168,15 @@ public class Main {
         return path.toString().trim();
     }
 
+    /**
+     * Checks if a cell in the maze is open and within bounds.
+     */
     private static boolean isOpen(char[][] maze, int row, int col) {
         return row >= 0 && row < maze.length && col >= 0 && col < maze[0].length && maze[row][col] == OPEN;
     }
 
     /**
-     * Factorizes path output.
+     * Factorizes the path by compressing repeated moves.
      * Example: "F F F L L R R" → "3F 2L 2R"
      */
     private static String factorizePath(String path) {
@@ -174,4 +201,3 @@ public class Main {
         return factorized.toString();
     }
 }
-
