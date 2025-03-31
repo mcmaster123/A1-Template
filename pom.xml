@@ -1,9 +1,7 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
-  http://maven.apache.org/maven-v4_0_0.xsd">
-
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <packaging>jar</packaging>
 
@@ -20,6 +18,7 @@
   </properties>
 
   <dependencies>
+
     <!-- Apache Commons CLI -->
     <dependency>
       <groupId>commons-cli</groupId>
@@ -38,11 +37,24 @@
       <artifactId>log4j-core</artifactId>
       <version>2.17.1</version>
     </dependency>
+
+    <!-- 
+      JUnit 5 (Jupiter) for testing
+      This is what you need to fix "package org.junit.jupiter.api does not exist"
+    -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.9.3</version>
+      <scope>test</scope>
+    </dependency>
+
   </dependencies>
 
   <build>
     <finalName>mazerunner</finalName>
     <plugins>
+
       <!-- Maven Compiler Plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -51,13 +63,11 @@
         <configuration>
           <source>21</source>
           <target>21</target>
-          <compilerArgs>
-            --enable-preview
-          </compilerArgs>
+          <compilerArgs>--enable-preview</compilerArgs>
         </configuration>
       </plugin>
 
-      <!-- Spring Boot Plugin (Optional, if needed) -->
+      <!-- Spring Boot Maven Plugin (if you're using Spring Boot features) -->
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
@@ -73,6 +83,19 @@
           </execution>
         </executions>
       </plugin>
+
+      <!-- Maven Surefire Plugin for running JUnit 5 tests -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.22.2</version>
+        <configuration>
+          <!-- Pass Java preview features if needed -->
+          <argLine>--enable-preview</argLine>
+        </configuration>
+      </plugin>
+
     </plugins>
   </build>
 </project>
+
